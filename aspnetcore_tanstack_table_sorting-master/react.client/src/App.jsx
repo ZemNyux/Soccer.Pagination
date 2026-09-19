@@ -2,9 +2,14 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
     useTable,
     tableFeatures,
+    rowSortingFeature,
+    createSortedRowModel,
     rowPaginationFeature,
     createPaginatedRowModel,
+    columnFilteringFeature,
+    createFilteredRowModel,
     createColumnHelper,
+    filterFn_includesString,
 } from '@tanstack/react-table';
 
 import './App.css';
@@ -14,6 +19,13 @@ const API_BASE_URL = '/api';
 const columnHelper = createColumnHelper();
 
 const playersTableFeatures = tableFeatures({
+    columnFilteringFeature,
+    filteredRowModel: createFilteredRowModel(),
+    filterFns: {
+        includesString: filterFn_includesString,
+    },
+    rowSortingFeature,
+    sortedRowModel: createSortedRowModel(),
     rowPaginationFeature,
     paginatedRowModel: createPaginatedRowModel(),
 });
@@ -29,61 +41,58 @@ export default function App() {
     const [teamForm, setTeamForm] = useState({ id: 0, name: '', coach: '' });
     const [isEditing, setIsEditing] = useState(false);
 
-    // пагінація на @tanstack/react-table ---
     const playersColumns = useMemo(
         () => [
-            columnHelper.accessor('id', { header: 'ID' }),
-            columnHelper.accessor('name', { header: "Ім'я" }),
-            columnHelper.accessor('age', { header: 'Вік' }),
-            columnHelper.accessor('position', { header: 'Позиція' }),
-            columnHelper.accessor('team', { header: 'Команда' }),
+            columnHelper.accessor('id', {
+                header: 'ID',
+                filterFn: 'includesString',
+            }),
+            columnHelper.accessor('name', {
+                header: "Ім'я",
+                filterFn: 'includesString',
+            }),
+            columnHelper.accessor('age', {
+                header: 'Вік',
+                filterFn: 'includesString',
+            }),
+            columnHelper.accessor('position', {
+                header: 'Позиція',
+                filterFn: 'includesString',
+            }),
+            columnHelper.accessor('team', {
+                header: 'Команда',
+                filterFn: 'includesString',
+            }),
         ],
         []
     );
-    // Колонки для команд
-    const teamsColumns = useMemo(
-        () => [
-            columnHelper.accessor('id', { header: 'ID' }),
-            columnHelper.accessor('name', { header: 'Назва' }),
-            columnHelper.accessor('coach', { header: 'Тренер' }),
-        ],
-        []
-    );
 
-    // Состояние пагинации для команд (по 5 команд на странице)
-    const [teamsPagination, setTeamsPagination] = useState({
-        pageIndex: 0,
-        pageSize: 5,
-    });
-
-    // Экземпляр таблицы TanStack для команд
-    const teamsTable = useTable({
-        features: playersTableFeatures,
-        data: teams,
-        columns: teamsColumns,
-        state: { pagination: teamsPagination },
-        onPaginationChange: setTeamsPagination,
-    });
-
-    // Отфильтрованные команды для текущей страницы
-    const paginatedTeams = teamsTable.getRowModel().rows.map((row) => row.original);
-
-    // стан пагінації: pageIndex (0-based), pageSize = 5 футболістів на сторінці
+    const [sorting, setSorting] = useState([]);
+    const [columnFilters, setColumnFilters] = useState([]);
     const [pagination, setPagination] = useState({
         pageIndex: 0,
-        pageSize: 5, // !!!
+        pageSize: 5,
     });
 
     const playersTable = useTable({
         features: playersTableFeatures,
         data: players,
         columns: playersColumns,
-        state: { pagination },
+        state: { sorting, columnFilters, pagination },
+        onSortingChange: setSorting,
+        onColumnFiltersChange: setColumnFilters,
         onPaginationChange: setPagination,
     });
 
-    // рядки поточної сторінки (бібліотека вже відфільтрувала)
-    const paginatedPlayers = playersTable.getRowModel().rows.map((row) => row.original);
+    const displayPlayers = playersTable.getRowModel().rows.map((row) => row.original);
+
+    const getSortHandler = (key) => playersTable.getColumn(key)?.getToggleSortingHandler();
+
+    const renderSortIcon = (key) => {
+        const direction = playersTable.getColumn(key)?.getIsSorted();
+        if (!direction) return null;
+        return <span className="sort-arrow">{direction === 'asc' ? '▲' : '▼'}</span>;
+    };
 
     const resetForm = useCallback(() => {
         setPlayerForm({ id: 0, name: '', age: '', position: '', teamId: '' });
@@ -123,8 +132,9 @@ export default function App() {
         let ignore = false;
         const load = async () => {
             resetForm();
-            // скидаємо на першу сторінку при зміні вкладки
-            setTeamsPagination((prev) => ({ ...prev, pageIndex: 0 }));
+            setSorting([]);
+            setColumnFilters([]);
+            setPagination((prev) => ({ ...prev, pageIndex: 0 }));
             setLoading(true);
             setError(null);
             try {
@@ -265,13 +275,13 @@ export default function App() {
                             {activeTab === 'players' ? (
                                 <>
                                     <div className="field">
-                                        <label>Ім'я гравця</label>
+                                        <label>Ім'я</label>
                                         <input
                                             type="text"
                                             required
                                             value={playerForm.name}
                                             onChange={(e) => setPlayerForm({ ...playerForm, name: e.target.value })}
-                                            placeholder="наприклад, Тимерлан Гусейнов"
+                                            placeholder="Ім'я гравця"
                                         />
                                     </div>
                                     <div className="field">
@@ -279,11 +289,11 @@ export default function App() {
                                         <input
                                             type="number"
                                             required
-                                            min="15"
+                                            min="16"
                                             max="50"
                                             value={playerForm.age}
                                             onChange={(e) => setPlayerForm({ ...playerForm, age: e.target.value })}
-                                            placeholder="25"
+                                            placeholder="Вік"
                                         />
                                     </div>
                                     <div className="field">
@@ -293,7 +303,7 @@ export default function App() {
                                             required
                                             value={playerForm.position}
                                             onChange={(e) => setPlayerForm({ ...playerForm, position: e.target.value })}
-                                            placeholder="наприклад, Форвард"
+                                            placeholder="Позиція"
                                         />
                                     </div>
                                     <div className="field">
@@ -303,9 +313,9 @@ export default function App() {
                                             onChange={(e) => setPlayerForm({ ...playerForm, teamId: e.target.value })}
                                         >
                                             <option value="">Без команди</option>
-                                            {teamOptions.map((team) => (
-                                                <option key={team.id} value={team.id}>
-                                                    {team.name}
+                                            {teamOptions.map((t) => (
+                                                <option key={t.id} value={t.id}>
+                                                    {t.name}
                                                 </option>
                                             ))}
                                         </select>
@@ -320,7 +330,7 @@ export default function App() {
                                             required
                                             value={teamForm.name}
                                             onChange={(e) => setTeamForm({ ...teamForm, name: e.target.value })}
-                                            placeholder="наприклад, ФК Чорноморець Одеса"
+                                            placeholder="Назва команди"
                                         />
                                     </div>
                                     <div className="field">
@@ -330,15 +340,14 @@ export default function App() {
                                             required
                                             value={teamForm.coach}
                                             onChange={(e) => setTeamForm({ ...teamForm, coach: e.target.value })}
-                                            placeholder="наприклад, Валерій Лобановський"
+                                            placeholder="Ім'я тренера"
                                         />
                                     </div>
                                 </>
                             )}
-
                             <div className="form-actions">
                                 <button type="submit" className="btn btn-primary">
-                                    {isEditing ? 'Зберегти' : 'Створити'}
+                                    {isEditing ? 'Зберегти' : 'Додати'}
                                 </button>
                                 {isEditing && (
                                     <button type="button" className="btn btn-ghost" onClick={resetForm}>
@@ -351,7 +360,7 @@ export default function App() {
 
                     <section className="panel list-panel">
                         <div className="panel-head">
-                            <h2>Список {activeTab === 'players' ? 'гравців' : 'команд'}</h2>
+                            <h2>{activeTab === 'players' ? 'Гравці' : 'Команди'}</h2>
                             <span className="count">
                                 {(activeTab === 'players' ? players : teams).length} записів
                             </span>
@@ -359,164 +368,217 @@ export default function App() {
 
                         {loading ? (
                             <div className="loader">
-                                <div className="spinner"></div>
+                                <div className="spinner" />
                                 <span>Завантаження...</span>
                             </div>
                         ) : (
                             <>
-                                    <div className="table-wrap">
-                                        <table>
-                                            <thead>
-                                                <tr>
-                                                    <th>ID</th>
-                                                    <th>{activeTab === 'players' ? "Ім'я" : 'Команда'}</th>
-                                                    {activeTab === 'players' ? (
-                                                        <>
-                                                            <th>Вік</th>
-                                                            <th>Позиція</th>
-                                                            <th>Команда</th>
-                                                        </>
-                                                    ) : (
+                                <div className="table-wrap">
+                                    <table>
+                                        <thead>
+                                            <tr>
+                                                {activeTab === 'players' ? (
+                                                    <>
+                                                        <th>
+                                                            <div className="th-content">
+                                                                <span className="sortable" onClick={getSortHandler('id')}>
+                                                                    ID{renderSortIcon('id')}
+                                                                </span>
+                                                                <input
+                                                                    className="filter-input"
+                                                                    placeholder="Фільтр..."
+                                                                    value={playersTable.getColumn('id')?.getFilterValue() ?? ''}
+                                                                    onChange={(e) =>
+                                                                        playersTable.getColumn('id')?.setFilterValue(e.target.value)
+                                                                    }
+                                                                />
+                                                            </div>
+                                                        </th>
+                                                        <th>
+                                                            <div className="th-content">
+                                                                <span className="sortable" onClick={getSortHandler('name')}>
+                                                                    Ім'я{renderSortIcon('name')}
+                                                                </span>
+                                                                <input
+                                                                    className="filter-input"
+                                                                    placeholder="Фільтр..."
+                                                                    value={playersTable.getColumn('name')?.getFilterValue() ?? ''}
+                                                                    onChange={(e) =>
+                                                                        playersTable.getColumn('name')?.setFilterValue(e.target.value)
+                                                                    }
+                                                                />
+                                                            </div>
+                                                        </th>
+                                                        <th>
+                                                            <div className="th-content">
+                                                                <span className="sortable" onClick={getSortHandler('age')}>
+                                                                    Вік{renderSortIcon('age')}
+                                                                </span>
+                                                                <input
+                                                                    className="filter-input"
+                                                                    placeholder="Фільтр..."
+                                                                    value={playersTable.getColumn('age')?.getFilterValue() ?? ''}
+                                                                    onChange={(e) =>
+                                                                        playersTable.getColumn('age')?.setFilterValue(e.target.value)
+                                                                    }
+                                                                />
+                                                            </div>
+                                                        </th>
+                                                        <th>
+                                                            <div className="th-content">
+                                                                <span className="sortable" onClick={getSortHandler('position')}>
+                                                                    Позиція{renderSortIcon('position')}
+                                                                </span>
+                                                                <input
+                                                                    className="filter-input"
+                                                                    placeholder="Фільтр..."
+                                                                    value={playersTable.getColumn('position')?.getFilterValue() ?? ''}
+                                                                    onChange={(e) =>
+                                                                        playersTable.getColumn('position')?.setFilterValue(e.target.value)
+                                                                    }
+                                                                />
+                                                            </div>
+                                                        </th>
+                                                        <th>
+                                                            <div className="th-content">
+                                                                <span className="sortable" onClick={getSortHandler('team')}>
+                                                                    Команда{renderSortIcon('team')}
+                                                                </span>
+                                                                <input
+                                                                    className="filter-input"
+                                                                    placeholder="Фільтр..."
+                                                                    value={playersTable.getColumn('team')?.getFilterValue() ?? ''}
+                                                                    onChange={(e) =>
+                                                                        playersTable.getColumn('team')?.setFilterValue(e.target.value)
+                                                                    }
+                                                                />
+                                                            </div>
+                                                        </th>
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <th>ID</th>
+                                                        <th>Команда</th>
                                                         <th>Тренер</th>
-                                                    )}
-                                                    <th>Дії</th>
+                                                    </>
+                                                )}
+                                                <th>Дії</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {(activeTab === 'players' ? displayPlayers : teams).length === 0 ? (
+                                                <tr>
+                                                    <td colSpan={activeTab === 'players' ? 6 : 4} className="empty">
+                                                        Дані відсутні
+                                                    </td>
                                                 </tr>
-                                            </thead>
-                                            <tbody>
-                                                {(activeTab === 'players' ? paginatedPlayers : paginatedTeams).map((item) => (
+                                            ) : activeTab === 'players' ? (
+                                                displayPlayers.map((item) => (
                                                     <tr key={item.id}>
-                                                        <td>#{item.id}</td>
+                                                        <td className="id">{item.id}</td>
                                                         <td className="name">{item.name}</td>
-                                                        {activeTab === 'players' ? (
-                                                            <>
-                                                                <td>{item.age}</td>
-                                                                <td><span className="badge">{item.position}</span></td>
-                                                                <td className="team-name">{item.team || '-'}</td>
-                                                            </>
-                                                        ) : (
-                                                            <td className="coach">{item.coach}</td>
-                                                        )}
-                                                        <td className="actions">
-                                                            <button
-                                                                className="icon-btn edit"
-                                                                onClick={() => handleEdit(item)}
-                                                                title="Редагувати"
-                                                            >
-                                                                ✏️
-                                                            </button>
-                                                            <button
-                                                                className="icon-btn delete"
-                                                                onClick={() => requestDelete(item.id, item.name)}
-                                                                title="Видалити"
-                                                            >
-                                                                ❌
-                                                            </button>
+                                                        <td>{item.age}</td>
+                                                        <td>
+                                                            <span className="badge">{item.position}</span>
+                                                        </td>
+                                                        <td className="team-name">{item.team || '—'}</td>
+                                                        <td>
+                                                            <div className="actions">
+                                                                <button
+                                                                    className="icon-btn edit"
+                                                                    onClick={() => handleEdit(item)}
+                                                                    title="Редагувати"
+                                                                >
+                                                                    ✎
+                                                                </button>
+                                                                <button
+                                                                    className="icon-btn delete"
+                                                                    onClick={() => requestDelete(item.id, item.name)}
+                                                                    title="Видалити"
+                                                                >
+                                                                    ✕
+                                                                </button>
+                                                            </div>
                                                         </td>
                                                     </tr>
-                                                ))}
-                                            </tbody>
-                                        </table>
+                                                ))
+                                            ) : (
+                                                teams.map((item) => (
+                                                    <tr key={item.id}>
+                                                        <td className="id">{item.id}</td>
+                                                        <td className="name">{item.name}</td>
+                                                        <td className="coach">{item.coach}</td>
+                                                        <td>
+                                                            <div className="actions">
+                                                                <button
+                                                                    className="icon-btn edit"
+                                                                    onClick={() => handleEdit(item)}
+                                                                    title="Редагувати"
+                                                                >
+                                                                    ✎
+                                                                </button>
+                                                                <button
+                                                                    className="icon-btn delete"
+                                                                    onClick={() => requestDelete(item.id, item.name)}
+                                                                    title="Видалити"
+                                                                >
+                                                                    ✕
+                                                                </button>
+                                                            </div>
+                                                        </td>
+                                                    </tr>
+                                                ))
+                                            )}
+                                        </tbody>
+                                    </table>
+                                </div>
+
+                                {activeTab === 'players' && players.length > 0 && (
+                                    <div className="pagination">
+                                        <button
+                                            className="pagination-btn"
+                                            onClick={() => playersTable.setPageIndex(0)}
+                                            disabled={!playersTable.getCanPreviousPage()}
+                                            title="Перша сторінка"
+                                        >
+                                            «
+                                        </button>
+                                        <button
+                                            className="pagination-btn"
+                                            onClick={() => playersTable.previousPage()}
+                                            disabled={!playersTable.getCanPreviousPage()}
+                                            title="Попередня"
+                                        >
+                                            ‹
+                                        </button>
+
+                                        <span className="pagination-info">
+                                            Сторінка <strong>{playersTable.state.pagination.pageIndex + 1}</strong> з{' '}
+                                            <strong>{playersTable.getPageCount() || 1}</strong>
+                                        </span>
+
+                                        <button
+                                            className="pagination-btn"
+                                            onClick={() => playersTable.nextPage()}
+                                            disabled={!playersTable.getCanNextPage()}
+                                            title="Наступна"
+                                        >
+                                            ›
+                                        </button>
+                                        <button
+                                            className="pagination-btn"
+                                            onClick={() => playersTable.setPageIndex(playersTable.getPageCount() - 1)}
+                                            disabled={!playersTable.getCanNextPage()}
+                                            title="Остання сторінка"
+                                        >
+                                            »
+                                        </button>
+
+                                        <span className="pagination-meta">
+                                            {displayPlayers.length} з {players.length} гравців
+                                        </span>
                                     </div>
-
-                                {/* пагінація для гравців */}
-                                    {/* пагінація */}
-                                    {activeTab === 'players' && players.length > 0 && (
-                                        <div className="pagination">
-                                            <button
-                                                className="pagination-btn"
-                                                onClick={() => playersTable.setPageIndex(0)}
-                                                disabled={!playersTable.getCanPreviousPage()}
-                                                title="Перша сторінка"
-                                            >
-                                                «
-                                            </button>
-                                            <button
-                                                className="pagination-btn"
-                                                onClick={() => playersTable.previousPage()}
-                                                disabled={!playersTable.getCanPreviousPage()}
-                                                title="Попередня"
-                                            >
-                                                ‹
-                                            </button>
-
-                                            <span className="pagination-info">
-                                                Сторінка{' '}
-                                                <strong>
-                                                    {playersTable.state.pagination.pageIndex + 1}
-                                                </strong>{' '}
-                                                з{' '}
-                                                <strong>
-                                                    {playersTable.getPageCount() || 1}
-                                                </strong>
-                                            </span>
-
-                                            <button
-                                                className="pagination-btn"
-                                                onClick={() => playersTable.nextPage()}
-                                                disabled={!playersTable.getCanNextPage()}
-                                                title="Наступна"
-                                            >
-                                                ›
-                                            </button>
-                                            <button
-                                                className="pagination-btn"
-                                                onClick={() => playersTable.setPageIndex(playersTable.getPageCount() - 1)}
-                                                disabled={!playersTable.getCanNextPage()}
-                                                title="Остання сторінка"
-                                            >
-                                                »
-                                            </button>
-                                        </div>
-                                    )}
-
-                                    {activeTab === 'teams' && teams.length > 0 && (
-                                        <div className="pagination">
-                                            <button
-                                                className="pagination-btn"
-                                                onClick={() => teamsTable.setPageIndex(0)}
-                                                disabled={!teamsTable.getCanPreviousPage()}
-                                                title="Перша сторінка"
-                                            >
-                                                «
-                                            </button>
-                                            <button
-                                                className="pagination-btn"
-                                                onClick={() => teamsTable.previousPage()}
-                                                disabled={!teamsTable.getCanPreviousPage()}
-                                                title="Попередня"
-                                            >
-                                                ‹
-                                            </button>
-
-                                            <span className="pagination-info">
-                                                Сторінка{' '}
-                                                <strong>
-                                                    {teamsTable.state.pagination.pageIndex + 1}
-                                                </strong>{' '}
-                                                з{' '}
-                                                <strong>
-                                                    {teamsTable.getPageCount() || 1}
-                                                </strong>
-                                            </span>
-
-                                            <button
-                                                className="pagination-btn"
-                                                onClick={() => teamsTable.nextPage()}
-                                                disabled={!teamsTable.getCanNextPage()}
-                                                title="Наступна"
-                                            >
-                                                ›
-                                            </button>
-                                            <button
-                                                className="pagination-btn"
-                                                onClick={() => teamsTable.setPageIndex(teamsTable.getPageCount() - 1)}
-                                                disabled={!teamsTable.getCanNextPage()}
-                                                title="Остання сторінка"
-                                            >
-                                                »
-                                            </button>
-                                        </div>
-                                    )}
+                                )}
                             </>
                         )}
                     </section>
@@ -529,7 +591,7 @@ export default function App() {
                         <span className="brand-icon">⚽</span>
                         <span>Футбольна ліга</span>
                     </div>
-                    <p>Приклад на локалізацію: чиста архітектура ASP.NET Core Web API + React</p>
+                    <p>Приклад: сортування + пагінація + фільтрація (TanStack Table)</p>
                     <p className="footer-copy">© {new Date().toLocaleString('uk-UA')}</p>
                 </div>
             </footer>

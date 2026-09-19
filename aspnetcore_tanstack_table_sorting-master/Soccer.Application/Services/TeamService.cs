@@ -9,7 +9,7 @@ namespace Soccer.Application.Services
 {
     public class TeamService : IEntityService<TeamDTO>
     {
-        private IUnitOfWork Database { get; set; } // юніт оф ворк для доступу до репозиторіїв
+        private IUnitOfWork Database { get; set; }
         private readonly IMapper mapper;
 
         public TeamService(IUnitOfWork uow, IMapper mapper)
@@ -27,8 +27,8 @@ namespace Soccer.Application.Services
                 Coach = teamDto.Coach
             };
 
-            await Database.Teams.Create(team); // створюємо сутність команди
-            await Database.Save(); // зберігаємо зміни
+            await Database.Teams.Create(team);
+            await Database.Save();
         }
 
         public async Task Update(TeamDTO teamDto)
@@ -40,21 +40,21 @@ namespace Soccer.Application.Services
                 Coach = teamDto.Coach
             };
 
-            Database.Teams.Update(team); // оновлюємо сутність
-            await Database.Save(); // зберігаємо зміни
+            Database.Teams.Update(team);
+            await Database.Save();
         }
 
         public async Task Delete(int id)
         {
-            await Database.Teams.Delete(id); // видаляємо команду за ідентифікатором
-            await Database.Save(); // зберігаємо зміни
+            await Database.Teams.Delete(id);
+            await Database.Save();
         }
 
         public async Task<TeamDTO> Get(int id)
         {
             var team = await Database.Teams.Get(id);
             if (team == null)
-                throw new ValidationException("Немає такого клуба!"); // викидаємо виключення, якщо команду не знайдено
+                throw new ValidationException("Немає такого клуба!");
 
             return new TeamDTO
             {
@@ -66,7 +66,7 @@ namespace Soccer.Application.Services
 
         public async Task<IEnumerable<TeamDTO>> GetAll()
         {
-            return mapper.Map<IEnumerable<TeamDTO>>(await Database.Teams.GetAll()); // мапимо всі сутності команд на dto
+            return mapper.Map<IEnumerable<TeamDTO>>(await Database.Teams.GetAll());
         }
     }
 }
